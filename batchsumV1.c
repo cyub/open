@@ -1,0 +1,42 @@
+#include <assert.h>
+#include <pthread.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+long n = 1e6;          // 计算从1到n整数和
+long chunksize = 1e4;  // 分块计算，每块待计算数的个数
+long sum;              // 计算的结果
+
+void *add_numbers(void *arg) {
+  long i;
+  long start = *(long *)arg;
+  for (i = start; i < start + chunksize && i <= n; i++) {
+    sum += i;
+  }
+}
+
+int main() {
+  long batch = n % chunksize == 0 ? (n / chunksize)
+                                  : ((n / chunksize) + 1);  // 分几批次计算
+
+  long *starts =
+      (long *)(malloc(sizeof(long) * batch));  // 记录每批次的起始的那个数
+  for (long i = 0; i < batch; i++) {
+    starts[i] = i * chunksize + 1;
+  }
+
+  pthread_t *threads = (pthread_t *)(malloc(
+      sizeof(pthread_t) * batch));  // 每批次计算时都使用线程并发处理
+
+  for (long i = 0; i < batch; i++) {
+    pthread_create(&threads[i], NULL, add_numbers, (void *)(starts + i));
+  }
+
+  for (long i = 0; i < batch; i++) {
+    pthread_join(threads[i], NULL);  // 等待所有线程完成工作
+  }
+
+  printf("sum: %ld\n", sum);
+  long expect = (n * (n + 1)) / 2;
+  assert(sum == expect);
+}
