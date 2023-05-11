@@ -1,3 +1,4 @@
+
 #include <assert.h>
 #include <pthread.h>
 #include <stdio.h>
@@ -6,12 +7,15 @@
 long n = 1e6;          // 计算从1到n整数和
 long chunksize = 1e4;  // 分块计算，每块待计算数的个数
 long sum;              // 计算的结果
+pthread_mutex_t m = PTHREAD_MUTEX_INITIALIZER;
 
 void *add_numbers(void *arg) {
   long i;
   long start = *(long *)arg;
   for (i = start; i < start + chunksize && i <= n; i++) {
+    pthread_mutex_lock(&m);
     sum += i;
+    pthread_mutex_unlock(&m);
   }
 }
 

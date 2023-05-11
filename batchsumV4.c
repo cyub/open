@@ -1,3 +1,4 @@
+
 #include <assert.h>
 #include <pthread.h>
 #include <stdio.h>
@@ -7,11 +8,14 @@ long n = 1e6;          // 计算从1到n整数和
 long chunksize = 1e4;  // 分块计算，每块待计算数的个数
 long sum;              // 计算的结果
 
+#define atomic_fetch_add(a, b) \
+  __atomic_fetch_add(a, b, __ATOMIC_SEQ_CST)  // gcc指令级别原子操作函数
+
 void *add_numbers(void *arg) {
   long i;
   long start = *(long *)arg;
   for (i = start; i < start + chunksize && i <= n; i++) {
-    sum += i;
+    atomic_fetch_add(&sum, i);
   }
 }
 
