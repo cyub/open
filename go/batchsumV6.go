@@ -48,7 +48,6 @@ func main() {
 
 	close(ch)                  // 关闭通道
 	for chunkSum := range ch { // 读取通道里面的所有批次计算的结果
-		fmt.Println(chunkSum)
 		sum += chunkSum
 	}
 	fmt.Printf("sum: %d\n", sum)
