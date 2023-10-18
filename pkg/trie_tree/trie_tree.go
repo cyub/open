@@ -16,13 +16,16 @@ func (t *TrieTree) Insert(words string) {
 		word := string(r)
 		if _, ok := node[word]; ok {
 			node = node[word]
+			if len(node) == 0 { // 先插入美国， 后插入美国人，最后保存的是美国
+				return
+			}
 		} else {
 			node[word] = make(map[string]Node)
 			node = node[word]
 		}
 	}
 
-	for k := range node {
+	for k := range node { // 先插入美国人，后插入美国，最后保存的依旧是美国
 		delete(node, k)
 	}
 }
