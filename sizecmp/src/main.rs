@@ -30,24 +30,36 @@ fn main() -> io::Result<()> {
 
     let mut total1: f64 = 0.0;
     let mut total2: f64 = 0.0;
+
+    println!(
+        "{:30} {:>11} {:>11} {:>11} {:>11}",
+        "section", "size1", "size2", "diff", "precent",
+    );
+    println!("{}", "=".repeat(78),);
+
     for k in keys {
-        println!(
-            "{:30} {:11} {:11} {:11}",
-            k,
-            size1.get(k).unwrap_or(&0.0),
-            size2.get(k).unwrap_or(&0.0),
-            size2.get(k).unwrap_or(&0.0) - size1.get(k).unwrap_or(&0.0)
-        );
+        let s1 = size1.get(k).unwrap_or(&0.0);
+        let s2 = size2.get(k).unwrap_or(&0.0);
+        let diff = s2 - s1;
+        let mut percent = String::from("-");
+        if s1.ne(&0.0) {
+            percent = format!("{:.2}%", (diff / s1) * 100.0);
+        }
+        println!("{:30} {:11} {:11} {:11} {:>11}", k, s1, s2, diff, percent);
         total1 += size1.get(k).unwrap_or(&0.0);
         total2 += size2.get(k).unwrap_or(&0.0);
     }
 
+    let total_diff = total2 - total1;
+    let mut total_percent = String::from("-");
+    if total1 != 0.0 {
+        total_percent = format!("{:.2}%", (total_diff / total1) * 100.0);
+    }
+
+    println!("{}", "=".repeat(78),);
     println!(
-        "{:30} {:11} {:11} {:11}",
-        "total",
-        total1,
-        total2,
-        total2 - total1
+        "{:30} {:11} {:11} {:11} {:>11}",
+        "total", total1, total2, total_diff, total_percent,
     );
     Ok(())
 }
