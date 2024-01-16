@@ -84,8 +84,76 @@ readlink /proc/xxx/fd/yyy
     ```
     通过这种方法，在子进程使用execve时，文件描述符会自动关闭。
 
+### creat
 
+```c
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
+int creat(const char *pathname, mode_t mode);
+```
 
+`creat`系统调用等价于如下`open`调用：
+```c
+fd = open(pathname, O_WRONLY | O_CREAT | O_TRUNC, mode);
+```
 
+`creat`用来创建文件的系统调用。创建文件的系统调用为啥是creat而不是create？现代Linux系统调用名称大部分是继承自Unix系统。根据《Unix传奇》一书介绍：
 
+> 顺便说一下，creat 系统调用之所以这么拼写，只能归咎于肯 · 汤普森的个人品位，没有其他什么好借口。罗布·派克曾经问肯，如果重写 Unix，他会做哪些修改。他的答案是什么？“我会在 creat 后头加上字母 e。”
+
+顺便提一下，肯 · 汤普森除了发明Unix系统外，他还是Utf-8编码以及Go语言的发明者。
+
+### read
+
+```c
+#include <unistd.h>
+
+ssize_t read(int fd, void *buf, size_t count);
+```
+`read`系统调用用来读取fd文件描述符指向的文件，其系统调用号是0。`read`系统调用的count参数指定最多能读取的字节数。buffer参数提供用来存放输入数据的内存缓冲区地址。缓冲区至少应有count个字节。
+
+如果`read`调用成功，将返回实际读取的字节数，如果遇到文件结束（EOF）则返回0，如果出现错误则返回-1。**一次`read`系统调用读取的字节数可能会小于指定的count数**，读取完成之后，`read`会更新文件偏移，读取多少字节数，就向后移动多少字节。
+
+对于以非阻塞形式打开的文件，还可能返回EAGAIN或EWOULDBLOCK，此时需要`read`调用者不断尝试读取。
+
+使用C语言读取文件时候，应该注意需要将读取的字节数对应地址的缓冲置为空字符`\0`，用来表示读取到的字符串的终止:
+
+```c
+#define MAX_READ 20
+char buffer[MAX_READ+1]; // 由于空字符占用一个字节的内存，
+// 所以缓冲区大小至少要比预计读取的最大字符串多出1个字节
+ssize_t numRead;
+
+numRead = read(STDIN_FILENO, buffer, MAX_READ);
+if (numRead == -1) {
+    perror("read error");
+    return;
+}
+
+buffer[numRead] = '\0'; // 空字符串
+printf("Thead input data was: %s\n", buffer);
+```
+
+### write
+
+```c
+#include <unistd.h>
+
+ssize_t write(int fd, const void *buf, size_t count);
+```
+
+`write`的系统调用号是1。如果`write`调用成功，将返回实际写入文件的字节数，**该返回值可能小于count参数值。这被称为“部分写”(partial write)**。对磁盘文件来说，造成“部分写”的原因可能是由于磁盘已满，或是因为进程资源对文件大小的限制（RLIMIT_FSIZE限制）。
+
+对磁盘文件执行I/O操作时，`write`调用成功并不能保证数据已经写入磁盘。因为为了减少磁盘活动量和加快`write`系统调用，内核会缓存磁盘的I/O操作，这叫**buffer I/O**。为了避免这种情况，可以使用`sync` 或 `fsync` 系统调用，强制进行落盘操作，或者在`open`创建文件时使用O_SYNC或O_DSYNC标志位来解决这一问题。
+
+同`read`类似，`write`在成功写入n个字节后，会将文件偏移更新n个字节。一般来说，`write`开始写入时的文件偏移就是当前的文件偏移（比如通过`read`读取数据时候更改了偏移或者`lseek`显示的更改了偏移），但是，**当文件描述符是通过open系统调用创建，且创建时使用了O_APPEND标志位的话，每次write开始写入前，都会默认将文件偏移移到文件末尾**。
+
+虽然不能保证数据一定写入硬盘，POSIX标准同样规定了一件事：即使不保证写入硬盘，`read`读入的数据一定是`write`成功之后的数据。
+
+```
+After a write() to a regular file has successfully returned:
+
+    Any successful read() from each byte position in the file that was modified by that write shall return the data specified by the write() for that position until such byte positions are again modified.
+```
