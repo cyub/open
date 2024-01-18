@@ -157,3 +157,70 @@ After a write() to a regular file has successfully returned:
 
     Any successful read() from each byte position in the file that was modified by that write shall return the data specified by the write() for that position until such byte positions are again modified.
 ```
+
+### close
+
+```c
+#include <unistd.h>
+
+int close(int fd);
+```
+close系统调用关闭一个打开的文件描述符，并将其释放回调用进程，供该进程继续使用。文件描述符属于有限资源，对于长期运行并处理大量文件的程序，如果一直不关闭文件描述符，可能会导致一个进程将文件描述符资源消耗殆尽。
+
+### lseek
+
+```c
+#include <sys/types.h>
+#include <unistd.h>
+
+off_t lseek(int fd, off_t offset, int whence);
+```
+
+whence参数表明参照那个基点来解释offset参数。
+![](https://static.cyub.vip/images/202401/lseek_whence.png)
+whence参数 | 含义
+--- | ---
+SEEK_SET | 将文件偏移量设置为从文件头部起始点开始的offset个字节
+SEEK_CUR | 相对于当前文件偏移量，将文件偏移量调整offset个字节。<br/>简而言之，相对于文件头部的绝对偏移量=当前文件偏移量+offset
+SEEK_END | 将文件偏移量设置为起始于文件尾部的offset个字节。<br/>也就是说，offset参数应该从文件最后一个字节之后的下一个字节算起
+
+#### 文件空洞
+
+如果程序的文件偏移量已然跨越了文件结尾，然后再执行I/O操作，将会发生什么情况？read调用将返回0，表示文件结尾。而write函数可以在文件结尾后的任意位置写入数据。
+
+从文件结尾后到新写入数据间的这段空间被称为文件空洞。从编程角度看，文件空洞中是存在字节的，读取空洞将返回以0（空字节）填充的缓冲区。
+
+然而，文件空洞不占用任何磁盘空间。直到后续某个时点，在文件空洞中写入了数据，文件系统才会为之分配磁盘块。文件空洞的主要优势在于，与为实际需要的空字节分配磁盘块相比，稀疏填充的文件会占用较少的磁盘空间。
+
+空洞的存在意味着一个文件名义上的大小可能要比其占用的磁盘存储总量要大（有时会大出许多）。向文件空洞中写入字节，内核需要为其分配存储单元，即使文件大小不变，系统的可用磁盘空间也将减少。
+
+> 在大多数文件系统中，文件空间的分配是以块为单位的（14.3节）。块的大小取决于文件系统，通常是1024字节、2048字节、4096字节。如果空洞的边界落在块内，而非恰好落在块边界上，则会分配一个完整的块来存储数据，块中与空洞相关的部分则以空字节填充。
+
+### pread
+
+```c
+#include <unistd.h>
+
+ssize_t pread(int fd, void *buf, size_t count, off_t offset);
+```
+
+pread系统调用同read调用类似，但pread是在文件的offset处读取，而不是在文件当前的偏移量进行读取。另外pread不会更改文件的offset, 所以它非常适合多线程程序并发地对同一个fd指向的文件进行读取。
+
+pread系统调用相当于下面的一些操作的原子操作：
+
+```c
+off_t orig;
+orig = lseek(fd, 0, SEEK_CUR);
+lseek(fd, offset, SEEK_SET);
+s = read(fd, buf, len);
+lseek(fd, origin, SEEK_SET);
+```
+
+
+### pwrite
+
+```c
+#include <unistd.h>
+
+ssize_t pwrite(int fd, const void *buf, size_t count, off_t offset);
+```
