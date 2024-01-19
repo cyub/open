@@ -181,8 +181,8 @@ whence参数表明参照那个基点来解释offset参数。
 whence参数 | 含义
 --- | ---
 SEEK_SET | 将文件偏移量设置为从文件头部起始点开始的offset个字节
-SEEK_CUR | 相对于当前文件偏移量，将文件偏移量调整offset个字节。<br/>简而言之，相对于文件头部的绝对偏移量=当前文件偏移量+offset
-SEEK_END | 将文件偏移量设置为起始于文件尾部的offset个字节。<br/>也就是说，offset参数应该从文件最后一个字节之后的下一个字节算起
+SEEK_CUR | 相对于当前文件偏移量，将文件偏移量调整offset个字节。简而言之，相对于文件头部的绝对偏移量=当前文件偏移量+offset
+SEEK_END | 将文件偏移量设置为起始于文件尾部的offset个字节。也就是说，offset参数应该从文件最后一个字节之后的下一个字节算起
 
 #### 文件空洞
 
@@ -261,3 +261,12 @@ ssize_t writev(int fd, const struct iovec *iov, int iovcnt);
 ### preadv/pwritev
 
 说明见`pread` 和 `readv`。
+
+## I/O 技术比较
+
+I/O 类型 | API | 优点 | 缺点
+--- | --- | --- | ---
+阻塞型(通用I/O、SG-I/O) | [p]read[v]/[p]write[v] | 易于使用 | 慢。缓冲区双重拷贝
+内存映射 | mmap |
+DIO(非阻塞，绝大多数是同步方式) | 使用O_DIRECT标志的open调用 |
+AIO(非阻塞，异步) | io_* |
