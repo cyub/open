@@ -1,6 +1,9 @@
 package syscall
 
-import "syscall"
+import (
+	"syscall"
+	"unsafe"
+)
 
 const (
 	O_RDONLY = syscall.O_RDONLY
@@ -37,4 +40,51 @@ func Pread(fd int, p []byte, offset int64) (n int, err error) {
 
 func Pwrite(fd int, p []byte, offset int64) (n int, err error) {
 	return syscall.Pwrite(fd, p, offset)
+}
+
+func Readv(fd uintptr, buff [][]byte, iovecs []syscall.Iovec) (int, error) {
+	var iovecLen int = 0
+	for i := 0; i < len(buff); i++ {
+		l := len(buff[i])
+		if l == 0 {
+			continue
+		}
+		iovecs[i].Base = &buff[i][0]
+		iovecs[i].SetLen(l)
+		iovecLen++
+	}
+	if iovecLen == 0 {
+		return 0, nil
+	}
+	r, _, err := syscall.RawSyscall(syscall.SYS_READV, fd, uintptr(unsafe.Pointer(&iovecs[0])), uintptr(iovecLen))
+	if err != 0 {
+		return 0, err
+	}
+
+	return int(r), nil
+}
+
+func Writev(fd uintptr, buff [][]byte) (int, error) {
+	iovecs := make([]syscall.Iovec, 0, len(buff))
+	for i := 0; i < len(buff); i++ {
+		l := len(buff[i])
+		if l == 0 {
+			continue
+		}
+
+		iovecs = append(iovecs, syscall.Iovec{
+			Base: &buff[i][0],
+			Len:  uint64(l),
+		})
+	}
+
+	if len(iovecs) == 0 {
+		return 0, nil
+	}
+	r, _, err := syscall.RawSyscall(syscall.SYS_WRITEV, fd, uintptr(unsafe.Pointer(&iovecs[0])), uintptr(len(iovecs)))
+	if err != 0 {
+		return 0, err
+	}
+
+	return int(r), nil
 }

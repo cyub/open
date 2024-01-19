@@ -224,3 +224,40 @@ lseek(fd, origin, SEEK_SET);
 
 ssize_t pwrite(int fd, const void *buf, size_t count, off_t offset);
 ```
+
+说明见`pread`。
+
+### readv
+
+```c
+#include <sys/uio.h>
+
+ssize_t readv(int fd, const struct iovec *iov, int iovcnt);
+
+struct iovec {
+    void  *iov_base;    /* Starting address */
+    size_t iov_len;     /* Number of bytes to transfer */
+};
+```
+
+![](https://static.cyub.vip/images/202401/iovec.png)
+
+`readv`系统调用与后面的`writev`等系统调用属于**Scatter-Gather I/O**，简称**SG I/O**。
+
+`readv`相当于多个`read`操作的原子操作。比如对于T-L-V编码的文件，我们可以一次性读取T和L段内容到两块不连续内存中。`readv`保证了原子性，并且读取内容是按照顺序处理的，只有iov[0]指向的内存填满之后，才会去填充iov[1]。
+
+同`read`系统调用类似，`readv`返回的读取的字节数，同样可能会小于iovec->iov_len之和。
+
+### writev
+
+```c
+#include <sys/uio.h>
+
+ssize_t writev(int fd, const struct iovec *iov, int iovcnt);
+```
+
+说明见`readv`。
+
+### preadv/pwritev
+
+说明见`pread` 和 `readv`。
