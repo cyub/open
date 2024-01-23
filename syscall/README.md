@@ -165,7 +165,7 @@ After a write() to a regular file has successfully returned:
 
 int close(int fd);
 ```
-close系统调用关闭一个打开的文件描述符，并将其释放回调用进程，供该进程继续使用。文件描述符属于有限资源，对于长期运行并处理大量文件的程序，如果一直不关闭文件描述符，可能会导致一个进程将文件描述符资源消耗殆尽。
+`close` 系统调用用来关闭一个打开的文件描述符，并将其释放回调用进程，供该进程继续使用。文件描述符属于有限资源，对于长期运行并处理大量文件的程序，如果一直不关闭文件描述符，可能会导致一个进程将文件描述符资源消耗殆尽。
 
 ### lseek
 
@@ -204,7 +204,7 @@ SEEK_END | 将文件偏移量设置为起始于文件尾部的offset个字节。
 ssize_t pread(int fd, void *buf, size_t count, off_t offset);
 ```
 
-pread系统调用同read调用类似，但pread是在文件的offset处读取，而不是在文件当前的偏移量进行读取。另外pread不会更改文件的offset, 所以它非常适合多线程程序并发地对同一个fd指向的文件进行读取。
+`pread`系统调用同`read`调用类似，但`pread`是在文件的offset处读取，而不是在文件当前的偏移量进行读取。另外`pread`不会更改文件的offset, 所以它非常适合多线程程序并发地对同一个fd指向的文件进行读取。
 
 pread系统调用相当于下面的一些操作的原子操作：
 
@@ -270,3 +270,41 @@ I/O 类型 | API | 优点 | 缺点
 内存映射 | mmap |
 DIO(非阻塞，绝大多数是同步方式) | 使用O_DIRECT标志的open调用 |
 AIO(非阻塞，异步) | io_* |
+
+### eventfd
+
+```c
+#include <sys/eventfd.h>
+
+int eventfd(unsigned int initval, int flags);
+```
+
+`eventfd`系统调用会创建用于事件通知的`eventfd`对象，返回的整数值就是该对象的文件描述符。`eventfd`对象拥有一个由内核的维护的8字节的无符号整数，称为`counter`，其通知机制就是建立在`counter`的数值变化之上。对于`eventfd`对象的文件描述符，我们既可以进行read/write操作，也可以使用`epoll`等多路复用机制来监听，以实现事件信号的通知。
+
+`eventfd`系统调用的参数说明：
+
+- intval：eventfd对象的counter的初始化值
+- flags: 设置eventfd对象的文件描述符fd属性。值有：
+    - EFD_CLOEXEC：设置为close-on-exec，类似通用文件的O_CLOEXEC标志，调用exec时候会自动关闭fd
+    - EFD_NONBLOCK：设置为非阻塞
+    - EFD_SEMAPHORE：从eventfd读出类似信号量的数据
+
+#### read/write/close 操作
+
+`eventfd`对象的文件描述符支持`read`、`write`、`close`操作。
+
+当进行`read`读取时候，提供的buf最少需要8个字节，如果小于8个字节，会返回EINVAL错误。根据`eventfd`的counter值和flags参数，`read`会有不同的返回结果：
+- 当counter的值是0时候，如果flags参数设置了`EFD_NONBLOCK`，那么`read`会返回
+EAGAIN错误，否则会进入阻塞状态
+- 当counter的值大于0，如果此时flags参数设置了EFD_SEMAPHORE，那么read返回的buf值是1，并且会将counter的值减一，否则`read`返回的buf值是counter值，此时counter会被重置为0
+
+`eventfd`的counter最大值是`uint64最大值-1`，即`0xfffffffffffffffe`。 当进行`write`写入时候，如果`write`调用提供的buf小于8个字节，或者尝试写入0xffffffffffffffff，`write`会返回EINVAL错误。每次`write`调用时候，内核都会将buf的值加到eventfd的counter上，如果最终值超过了counter的最大值，此时如果flags设置了`EFD_NONBLOCK`那么会返回EAGAIN错误，否则会进入阻塞状态（此后如果有read操作，write会写入成功）。
+
+当不再需要eventfd的文件描述符时，应将其关闭，当文件描述符关闭之后，该文件描述符关联的eventfd对象也会被释放掉。另外除非设置了 close-on-exec 标志，否则eventfd创建的文件描述符将在`execve`中保留。
+
+#### select/poll/epoll操作
+
+eventfd一个重要用法，是将其文件描述符用于`epoll`等多路复用系统调用中。相比使用管道发送事件信号，eventfd的内核开销更低，并且它只需要一个文件描述符。在进程的`/proc/[pid]/fdinfo`目录中，我们可以查看eventfd的counter的值。
+
+- 当counter值大于0时候，eventfd是可读的
+- 当counter小于0xffffffffffffffff，eventfd是可写的，因为至少可以写入一个1而不阻塞
