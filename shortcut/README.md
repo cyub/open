@@ -28,3 +28,4 @@
 工作区跳转 | Cmd + t | Ctrl + t
 Tab切换 | `Option + Cmd + ←` 和  `Option + Cmd + →` | `Alt + Ctrl + ←` 和 `Alt + Ctrl + →`
 打开/关闭控制台 | Cmd + j | Ctrl + j
+代码编辑区与终端区跳转 | Ctrl + ` | Ctrl + \` | `是反引号
