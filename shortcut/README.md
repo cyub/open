@@ -8,7 +8,7 @@
 前进(返回下一处光标) | Ctrl + Shift + - | Alt + →
 删除当前光标所在的行 | Cmd + Shift + K | Ctrl + Shift + K
 移动光标到行首与行尾 | `Ctrl + a` 和 `Ctrl + e` | `Ctrl + a` 和 `Ctrl + e`
-选中当前行 | Cmd + l | Ctrl + l | 按着不停，会继续选择下一行
+选中当前行 | `Cmd + l` | `Ctrl + l` | 按着不停，会继续选择下一行
 选择与取消多个词 | `Cmd + d` 和 `Cmd + u` | `Ctrl + d` 和 `Ctrl + u`
 向上向下移动代码行 | `Option + ↑` 和 `Option + ↓` | `Alt + ↑` 和 `Alt + ↓`
 注释和取消注释代码 | Cmd + / | Ctrl + /
