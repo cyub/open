@@ -342,3 +342,16 @@ if (rv != 0) {
   die("setns()");
 }
 ```
+
+绑定到容器的命名空间进行测试：
+
+```shell
+docker run -d --name redis -p 6379:6379 redis:latest # 创建redis容器
+docker inspect -f {{.State.Pid}} redis # 获取容器的redis进程id
+make setns # 构建测试程序
+./setns 2444254 # 2444254是容器的redis的进程id
+```
+
+测试的结果：
+
+![](../images/setns.jpg)
