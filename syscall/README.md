@@ -308,3 +308,37 @@ eventfd一个重要用法，是将其文件描述符用于`epoll`等多路复用
 
 - 当counter值大于0时候，eventfd是可读的
 - 当counter小于0xffffffffffffffff，eventfd是可写的，因为至少可以写入一个1而不阻塞
+
+## Namespace
+
+### setns
+
+```c
+#define _GNU_SOURCE
+#include <sched.h>
+
+int setns(int fd, int nstype);
+```
+
+`setns`用于将当前进程加入到已有的 namespace 中，其中：
+
+- fd: 是要加入 namespace 的文件描述符。它指向 /proc/[pid]/ns 目录下的某个文件的文件描述符
+- nstype： 用于检查fd指向的namespace是否符合要求，0表示不做任何检查。
+
+绑定PID命名空间示例：
+
+```c
+snprintf(filename, sizeof(filename), "/proc/%d/ns/pid", pid);
+nstype = CLONE_NEWPID;
+
+fd = open(filename, O_RDONLY);
+if (fd < 0)
+  die("open()");
+
+int rv;
+rv = setns(fd, nstype);
+close(fd);
+if (rv != 0) {
+  die("setns()");
+}
+```
