@@ -308,3 +308,50 @@ eventfd一个重要用法，是将其文件描述符用于`epoll`等多路复用
 
 - 当counter值大于0时候，eventfd是可读的
 - 当counter小于0xffffffffffffffff，eventfd是可写的，因为至少可以写入一个1而不阻塞
+
+## Namespace
+
+### setns
+
+```c
+#define _GNU_SOURCE
+#include <sched.h>
+
+int setns(int fd, int nstype);
+```
+
+`setns`用于将当前进程加入到已有的 namespace 中，其中：
+
+- fd: 是要加入 namespace 的文件描述符。它指向 /proc/[pid]/ns 目录下的某个文件的文件描述符
+- nstype： 用于检查fd指向的namespace是否符合要求，0表示不做任何检查。
+
+绑定PID命名空间示例：
+
+```c
+snprintf(filename, sizeof(filename), "/proc/%d/ns/pid", pid);
+nstype = CLONE_NEWPID;
+
+fd = open(filename, O_RDONLY);
+if (fd < 0)
+  die("open()");
+
+int rv;
+rv = setns(fd, nstype);
+close(fd);
+if (rv != 0) {
+  die("setns()");
+}
+```
+
+绑定到容器的命名空间进行测试：
+
+```shell
+docker run -d --name redis -p 6379:6379 redis:latest # 创建redis容器
+docker inspect -f {{.State.Pid}} redis # 获取容器的redis进程id
+make setns # 构建测试程序
+./setns 2444254 # 2444254是容器的redis的进程id
+```
+
+测试的结果：
+
+![](../images/setns.jpg)
