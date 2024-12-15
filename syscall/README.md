@@ -355,3 +355,231 @@ make setns # 构建测试程序
 测试的结果：
 
 ![](../images/setns.jpg)
+
+## 零拷贝
+
+### mmap
+
+```c
+#include <sys/mman.h>
+
+void *mmap(void *addr, size_t length, int prot, int flags,
+            int fd, off_t offset);
+```
+
+`mmap`系统调用用来在调用进程的虚拟地址空间中创建一个新的内存映射。
+
+`addr`参数指定映射放置的虚拟地址，若为`NULL`，则由内核选择一个合适地址。不能与既有的映射冲突，那么`addr`必须是分页对齐的。
+
+`length`参数指定映射区域的长度，由于内核是以分页大小为单位(`sysconf(_SC_PAGESIZE)`)来创建映射的，实际`length`会调整为分页大小的下一个倍数(向上舍入)。
+
+`prot`参数指定映射的保护方式，该值是一个位掩码，取值有：
+
+值 | 说明
+--- | ---
+PROT_NONE | 不可访问
+PROT_READ | 可读
+PROT_WRITE | 可写
+PROT_EXEC | 可执行
+
+`PROT_NONE` 一个用途是实现保护页(Guard Pages),用来防止缓冲区溢出攻击，可以在进程分配的内存区域的起始位置或者结束位置设置守护分页，如果越界访问了内核会生成一个 `SIGSEGV` 信号，并异常终止。不同的进程可以使用不同的保护位来映射同一个内存区域，我们可以使用 `mprotect` 系统调用来修改内存保护位。
+
+`flags` 参数控制映射特性：
+
+标志 | 是否必须包含 |  说明
+--- | --- | ---
+MAP_PRIVATE | Y | 创建一个私有映射
+MAP_SHARED | Y | 创建一个共享映射
+MAP_ANONYMOUS | N | 创建一个匿名映射
+MAP_FIXED | N | 映射到指定的地址
+MAP_NORESERVE | 控制交换空间的预留
+
+`fd`参数用于指定被映射的文件的文件描述符。`offset`参数指定映射在文件中的起点，它必须是系统分页大小的倍数。
+
+下面是使用`mmap`实现的一个建议版本`cat`示例:
+
+```c
+fd = open(argv[1], O_RDONLY);
+if (fd == -1) errExit("open");
+
+if (fstat(fd, &sb) == -1) errExit("fstat");
+
+addr = mmap(NULL, sb.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+if (addr == MAP_FAILED) errExit("mmap");
+
+if (write(1, addr, sb.st_size) != sb.st_size) fatal("partial/failed write");
+```
+
+#### 边界问题
+
+由于映射的实际大小需要是分页大小的整数倍，另外可以指定的映射大小可以小于文件的大小，那么存在两种边界问题：
+
+- 映射文件大小超过映射范围：
+- 映射文件未超过映射范围：
+
+假定分页大小为4096字节，对于第一种情况：
+
+![](https://static.cyub.vip/images/202412/mmap_offset_in.png)
+
+对于第二种情况：
+
+![](https://static.cyub.vip/images/202412/mmap_offset_overflow.png)
+
+### munmap
+
+```c
+#include <sys/mman.h>
+
+int munmap(void *addr, size_t length);
+```
+`munmap`系统调用用于删除一个映射。`addr`参数指定待删除映射的起始地址，它必须与一个分页边界对齐。 `length`参数指定待删除映射区域的大小。
+
+若要删除整个映射，可以将`addr`指定为上一个`mmap`调用返回的地址，并且`length`值与`mmap`调用使用的`length`的值一样：
+
+```c
+addr = mmap(NULL, length, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+if (addr == MAP_FAILED)
+    errExit("mmap");
+/* do somethings */
+
+if (munmap(addr, length) == -1)
+    errExit("munmap");
+```
+
+如果在由`addr`和`length`指定的地址范围中不存在映射，那么`munmap()`将不起任何作用并返回0（表示成功）。
+
+在解除映射期间，内核会删除进程持有的在指定地址范围内的所有内存锁。（内存锁是通过`mlock()`或`mlockall()`来创建的）。
+
+当一个进程终止或执行了一个 `exec()` 之后进程中所有的映射会自动被解除。为确保一个共享文件映射的内容会被写入到底层文件中，在使用 `munmap()` 解除一个映射之前需要调用`msync()`。
+
+### 文件映射
+
+要创建一个文件映射需要执行下面的步骤：
+- 1．获取文件的一个描述符，通常通过调用`open()`来完成。
+- 2．将文件描述符作为fd参数传入`mmap()`调用。
+
+执行上述步骤之后`mmap()`会将打开的文件的内容映射到调用进程的地址空间中。一旦`mmap()`被调用之后就能够关闭文件描述符了，而不会对映射产生任何影响。
+
+![](https://static.cyub.vip/images/202412/mmap_file.png)
+
+
+#### 私有文件映射
+
+私有文件映射用途：
+- 允许多个进程共享同一个程序或者共享库的代码段。
+- 映射可执行文件或者共享库的初始化数据段，即使修改了数据段内容，也不会更改底层文件上。
+
+这两种用法一般是由程序加载器和动态链接器创建的，我们可以在`/proc/PID/maps`输出中看到这两种映射。
+
+对于第一种用途为啥不直接设置映射保护为`PROT_READ|PROT_EXEC`来实现？这是因为应用程序可以通过`mprotect`修改映射保护设置，这样就会导致可以更改底层文件了。
+
+#### 共享文件映射
+
+当多个进程创建了同一个文件区域的共享映射时，它们会共享同样的内存物理分页。此外，对映射内容的变更将会反应到文件上。共享文件映射存在两个用途：内存映射I/O和IPC。
+
+![](https://static.cyub.vip/images/202412/mmap_share_file.png)
+
+##### 内存映射I/O
+
+内存映射I/O指的是通过访问内存中的字节来执行文件I/O，而依靠内核来确保对内存的变更会被传递到映射文件中。
+
+内存映射I/O的优势有：
+
+- 减少IO传输次数，以及上下文切换次数
+- 节省内存使用，从一个应用空间缓冲区和内核空间缓冲区，变成了一个共享的缓冲区。
+
+![](https://static.cyub.vip/images/202412/io.webp)
+
+从上面传统I/O流程中，可以看到一次`read`调用，需要**两次数据拷贝，两次上下文切换**。如果使用`mmap`后，只需要**一次数据拷贝（从文件拷贝到用户空间与内核空间的共享缓冲区中），零次上下文切换**。这种技术也称为**零拷贝（Zero-Copy）技术**。零拷贝是一种高效的数据传输技术，旨在减少或消除数据在传输过程中的拷贝次数，从而提高数据传输效率和系统性能。注意：零拷贝并非指完全没有数据拷贝的过程。
+
+**内存映射I/O所带来的性能优势在在大型文件中执行重复随机访问时最有可能体现出来**。
+
+如果顺序地访问一个文件，并假设执行I/O时使用的缓冲区大小足够大以至于能够避免执行大量的I/O系统调用，那么与`read()`和`write()`相比，`mmap()`带来的性能上的提升就非常有限或者说根本就没有带来性能上的提升。对于小数据量I/O来讲，内存映射I/O的开销（即映射、分页故障、解除映射以及更新硬件内存管理单元的超前转换缓冲器）实际上要比简单的`read()`或`write()`大。简而言之，**小文件的I/O操作并不适合使用内存映射I/O处理**。
+
+##### 基于共享文件映射的IPC
+
+### msync
+
+```c
+#include <sys/mman.h>
+
+int msync(void *addr, size_t length, int flags);
+```
+
+内核会自动将发生在`MAP_SHARED`映射内容上的变更写入到底层文件中，但在默认情况下，内核不保证这种同步操作会在何时发生。`msync()`系统调用让应用程序能够显式地控制何时完成共享映射与映射文件之间的同步。
+
+`addr`参数地址必须是分页对齐的，`length`会被调整为向上舍入到系统分页大小的下一个整数倍。
+
+`flags`参数取值有：
+- MS_SYNC 
+
+    执行同步操作，会阻塞直到内存区域所有修改过的分页被落盘操作完成。
+- MS_ASYNC
+
+    执行一个异步的文件写入操作，内存区域只是与内核高速缓冲区进行同步，最终由`pdflush`内核线程刷入到磁盘中。
+- MS_INVALIDATE
+
+    使映射数据的缓冲副本失效。当内存区域中所有被修改过的分页被同步到文件中之后，内存区域中所有与底层文件不一致的分页会被标记为无效。当下次引用这些分页时会从文件的相应位置处复制相应的分页内容，其结果是其他进程对文件做出的所有更新将会在内存区域中可见。
+
+### 匿名映射
+
+匿名映射是没有对应文件的一种映射。
+
+在Linux上，使用`mmap()`创建匿名映射存在两种不同但等价的方法：
+- 在`flags`中指定`MAP_ANONYMOUS`并将`fd`指定为−1。
+- 打开`/dev/zero`设备文件并将得到的文件描述符传递给`mmap()`。
+
+不管是使用`MAP_ANONYMOUS`还是使用`/dev/zero`技术，得到的映射中的字节会被初始化为0。在两种技术中，`offset`参数都会被忽略（因为没有底层文件，所以也无从指定偏移量）。
+
+#### 私有匿名映射
+
+`MAP_PRIVATE`匿名映射用来分配进程私有的内存块并将其中的内容初始化为0。
+
+```c
+fd = open("/dev/zero", O_RDWR);
+if (fd == -1)
+    errExit("open");
+addr = mmap(NULL, length, PROT_READ | PROT_PRIVATE, fd, 0);
+
+if (addr == MAP_FAILED)
+    errExit("mmap");
+```
+
+> `glibc`中的`malloc()`实现使用`MAP_PRIVATE`匿名映射来分配大小大于`MMAP_THRESHOLD`字节的内存块。这样在后面将这些内存块传递给`free()`之后就能高效地释放这些块（通过`munmap()`）。（它还降低了重复分配和释放大内存块而导致内存分片的可能性。）`MMAP_THRESHOLD`在默认情况下是128 kB，但可以通过`mallopt()`库函数来调整这个参数。
+
+#### 共享匿名映射
+
+`MAP_SHARED`匿名映射允许相关进程（如父进程和子进程）共享一块内存区域而无需一个对应的映射文件：
+
+```c
+addr = mmap(NULL, length, PROT_READ | PROT_WRITE | MAP_SHARED | MAP_ANONYMOUS, -1, 0);
+if (addr == MAP_FAILED)
+    errExit("mmap");
+```
+
+### mremap
+
+```c
+#define _GNU_SOURCE         /* See feature_test_macros(7) */
+#include <sys/mman.h>
+
+void *mremap(void *old_address, size_t old_size,
+            size_t new_size, int flags, ... /* void *new_address */);
+```
+
+`mremap`系统调用用于重新映射一个映射区域。
+
+### remap_file_pages
+
+```c
+ #define _GNU_SOURCE         /* See feature_test_macros(7) */
+#include <sys/mman.h>
+
+int remap_file_pages(void *addr, size_t size, int prot, size_t pgoff, int flags);
+```
+
+`remap_file_pages`系统调用可以创建非线性映射。
+
+![](https://static.cyub.vip/images/202412/remap_file_pages.png)
+
+相比使用多个带有`MAP_FIXED`标记的`mmap`系统调用来创建非线性映射，`remap_file_pages`性能会更好。因为每个`mmap`调用都会创建一个**内核虚拟内存区域(VMA)数据结构**，构建其需要耗时且消耗掉不可交换的内核内存。在`/proc/PID/maps`文件中一行表示一个`VMA`。
