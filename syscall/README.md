@@ -549,7 +549,7 @@ if (addr == MAP_FAILED)
 
 #### 共享匿名映射
 
-`MAP_SHARED`匿名映射允许相关进程（如父进程和子进程）共享一块内存区域而无需一个对应的映射文件：
+`MAP_SHARED`匿名映射允许相关进程（如父进程和子进程，通过fork()创建的子进程会继承映射）共享一块内存区域而无需一个对应的映射文件：
 
 ```c
 addr = mmap(NULL, length, PROT_READ | PROT_WRITE | MAP_SHARED | MAP_ANONYMOUS, -1, 0);
@@ -583,3 +583,12 @@ int remap_file_pages(void *addr, size_t size, int prot, size_t pgoff, int flags)
 ![](https://static.cyub.vip/images/202412/remap_file_pages.png)
 
 相比使用多个带有`MAP_FIXED`标记的`mmap`系统调用来创建非线性映射，`remap_file_pages`性能会更好。因为每个`mmap`调用都会创建一个**内核虚拟内存区域(VMA)数据结构**，构建其需要耗时且消耗掉不可交换的内核内存。在`/proc/PID/maps`文件中一行表示一个`VMA`。
+
+### 总结
+
+各种内存映射用途：
+
+映射类型 | 私有可见性 | 共享可见性
+--- | --- | ---
+文件映射 | 根据文件内容初始化内存 | 进程间IPC（不相关进程或者父子进程）
+匿名映射 | 内存分配 | 父子进程间IPC
