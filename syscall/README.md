@@ -617,7 +617,9 @@ ssize_t sendfile(int out_fd, int in_fd, off_t *offset, size_t count);
 
 `sendfile`系统调用参数说明：
 
-- `in_fd`参数指定输入文件的描述符，`out_fd`参数指定输出文件的文件描述符，在Linux 2.6.33内核之前，`out_fd`必须指定为套接字描述符，而2.6.33之后，可以是任意文件的文件描述符，但一般都是普通文件描述符。
+- `in_fd`参数指定输入文件的描述符
+
+- `out_fd`参数指定输出文件的文件描述符，在Linux 2.6.33内核之前，`out_fd`必须指定为套接字描述符，而2.6.33之后，可以是任意文件的文件描述符，但一般都是普通文件描述符。
 
 - `offset`参数指定输入文件的起始位置，为NULL时候，表示从文件开始位置开始传输，`sendfile`不会更改`in_file`的文件偏移量。当`sendfile`返回时候，`offset`记录了`in_file`输出字节的下一个字节的偏移量。
 
@@ -628,3 +630,60 @@ ssize_t sendfile(int out_fd, int in_fd, off_t *offset, size_t count);
 ![](https://static.cyub.vip/images/202412/readfile.webp)
 
 可以看到整个过程中只发生了2次上下文切换，1次CPU拷贝；相比`mmap`+`write`又节省了2次上下文切换。同时内核缓冲区和用户缓冲区也无需建立内存映射，节省了内存上的占用开销。
+
+### copy_range_file
+
+```c
+ #define _GNU_SOURCE
+#include <unistd.h>
+
+ssize_t copy_file_range(int fd_in, loff_t *off_in,
+        int fd_out, loff_t *off_out,
+        size_t len, unsigned int flags);
+```
+
+`copy_file_range`系统调用来将一个文件指定位置内容复制到另外一个文件中。`copy_file_range`同`sendfile`一样，是内核内复制，属于零拷贝。
+
+- `fd_in`参数指定输入文件描述符，即源文件的文件描述符。
+- `off_in`参数指定输入文件的偏移位置。若`off_in`为NULL，则从`fd_in`指向的文件的开始处读取。
+- `fd_out`参数指定输出文件描述，即目标文件的文件描述符。
+- `off_out`参数指定输出文件的偏移位置。
+
+若`copy_range_file`调用成功，则返回复制的字节数，该字节数可能会小于`len`参数。若失败，则返回-1,并且[errno](https://man7.org/linux/man-pages/man3/errno.3.html)将被设置。
+
+下面是`copy_range_file`示例：
+
+```c
+fd_in = open(argv[1], O_RDONLY);
+if (fd_in == -1) {
+    perror("open (argv[1])");
+    exit(EXIT_FAILURE);
+}
+
+if (fstat(fd_in, &stat) == -1) {
+    perror("fstat");
+    exit(EXIT_FAILURE);
+}
+
+len = stat.st_size;
+
+fd_out = open(argv[2], O_CREAT | O_WRONLY | O_TRUNC, 0644);
+if (fd_out == -1) {
+    perror("open (argv[2])");
+    exit(EXIT_FAILURE);
+}
+
+do {
+    ret = copy_file_range(fd_in, NULL, fd_out, NULL, len, 0);
+    if (ret == -1) {
+        perror("copy_file_range");
+        exit(EXIT_FAILURE);
+    }
+
+    len -= ret;
+} while (len > 0 && ret > 0);
+
+close(fd_in);
+close(fd_out);
+```
+
