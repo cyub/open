@@ -631,6 +631,10 @@ ssize_t sendfile(int out_fd, int in_fd, off_t *offset, size_t count);
 
 可以看到整个过程中只发生了2次上下文切换，1次CPU拷贝；相比`mmap`+`write`又节省了2次上下文切换。同时内核缓冲区和用户缓冲区也无需建立内存映射，节省了内存上的占用开销。
 
+在Linux 2.4内核版本中引入的`SG-DMA`技术，对`DMA`拷贝加入了`scatter/gather`操作。这意味着`DMA`控制器可以直接从内核空间缓冲区中读取数据并传输到网卡，无需CPU的进一步拷贝。那么`sendfile+DMA scatter/gather`方式就可以实现真正的零拷贝：
+
+![](https://static.cyub.vip/images/202412/sendfile_sg_dma.webp)
+
 ### copy_range_file
 
 ```c
@@ -687,3 +691,47 @@ close(fd_in);
 close(fd_out);
 ```
 
+### splice
+
+```c
+#define _GNU_SOURCE         /* See feature_test_macros(7) */
+#include <fcntl.h>
+
+ssize_t splice(int fd_in, loff_t *off_in, int fd_out,
+                loff_t *off_out, size_t len, unsigned int flags);
+```
+
+`splice`系统调用用于两个文件描述符之间移动数据，同`sendfile`函数一样，属于零拷贝。
+
+- `fd_in`参数指定待输入的文件描述符，如果它是一个管道描述符，则`off_in`必须设置为NULL,否则`off_in`表示输入的数据流从何处读取，此时若为NULL，则从输入数据流的当前偏移位置读取。
+- `fd_out`参数指定待输入的文件描述符，`fd_in`与`fd_out`中至少有一个管道描述符。
+- `len`参数指定移动数据的长度。
+- `flags`参数控制数据移动：
+    - SPLICE_F_NONBLOCK：`splice` 操作不会被阻塞。如果文件描述符没有被设置为不可被阻塞方式的I/O ，那么调用`splice`有可能仍然被阻塞。
+    - SPLICE_F_MORE：告知操作系统内核下一个 `splice` 系统调用将会有更多的数据传来。
+    - SPLICE_F_MOVE：如果输出是文件，这个值则会使得操作系统内核尝试从输入管道缓冲区直接将数据读入到输出地址空间，这个数据传输过程没有任何数据拷贝操作发生。
+
+`splice`调用成功后，返回移动的字节数量，可能返回0，表示没有数据需要移动，比如从管道中读取数据时候，而该管道没有写入时候。若调用失败，则返回-1，并设置errno。
+
+
+`splice`系统调用中没有发生数据拷贝过程，当使用`splice`系统调用是将源文件（如磁盘文件）的数据直接“拷贝”到管道的写端。这里的“拷贝”实际上是将文件的页缓存（Page Cache）与管道的环形缓冲区（Ring Buffer）进行绑定，这一步中CPU并没有参与数据拷贝。接着再次使用`splice`系统调用，将管道读端的数据“拷贝”到目标文件（如网络套接字）中，这一步CPU并没有参与数据拷贝，因为它只是将管道的环形缓冲区与目标文件的缓冲区进行绑定，并传递数据指针。
+
+![](https://static.cyub.vip/images/202412/splice.webp)
+
+### 总结
+
+零拷贝方式总结：
+
+拷贝方式  | 系统调用  | CPU拷贝次数 | DMA拷贝次数 | 上下文切换次数 | 特点
+--- | --- | --- | --- | --- | ---
+传统拷贝方式 | read/write | 2 | 2 | 4  | 消耗系统资源比较多，拷贝数据效率慢
+mmap | mmap/write | 1 | 2 | 4 |  相比传统方法，少了用户缓冲区与内核缓冲区的数据拷贝，效率更高
+sendfile | sendfile | 1 | 2 | 2 | 相比mmap方式，少了内存文件映射步骤，效率更高
+sendfile With DMA scatter/gather | sendfile | 0 | 2 | 2 | 需要DMA控制器支持，没有CPU拷贝数据环节，真正的零拷贝
+splice |  splice | 0 | 2 | 2 | 没有CPU拷贝数据环节，真正的零拷贝，编程逻辑复杂
+
+## 参考资料
+
+- [The Linux Programming Interface](https://man7.org/tlpi/index.html)
+- [Linux x86_64系统调用简介](https://evian-zhang.github.io/introduction-to-linux-x86_64-syscall/index.html)
+- [什么是零拷贝技术？mmap和sendfile如何实现零拷贝，它们是否真正实现了零拷贝？](https://mp.weixin.qq.com/s/ncGovyLYla3jVj3pq3ERuw)
