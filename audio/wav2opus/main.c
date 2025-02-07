@@ -58,6 +58,15 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
+  // 设置带宽
+  error =
+      opus_encoder_ctl(encoder, OPUS_SET_BANDWIDTH(OPUS_BANDWIDTH_WIDEBAND));
+  if (error != OPUS_OK) {
+    printf("设置带宽失败: %s\n", opus_strerror(error));
+    opus_encoder_destroy(encoder);
+    return 1;
+  }
+
   // 设置目标比特率
   error = opus_encoder_ctl(encoder, OPUS_SET_BITRATE(bitrate));
   if (error != OPUS_OK) {
@@ -70,6 +79,22 @@ int main(int argc, char *argv[]) {
   error = opus_encoder_ctl(encoder, OPUS_SET_VBR(0));  // 0 代表关闭VBR
   if (error != OPUS_OK) {
     printf("禁用VBR失败: %s\n", opus_strerror(error));
+    opus_encoder_destroy(encoder);
+    return 1;
+  }
+
+  // 设置最低有效位深度
+  error = opus_encoder_ctl(encoder, OPUS_SET_LSB_DEPTH(16));
+  if (error != OPUS_OK) {
+    printf("设置最低有效位深度失败: %s\n", opus_strerror(error));
+    opus_encoder_destroy(encoder);
+    return 1;
+  }
+
+  // 设置编码复杂度
+  error = opus_encoder_ctl(encoder, OPUS_SET_COMPLEXITY(10));
+  if (error != OPUS_OK) {
+    printf("设置编码复杂度失败: %s\n", opus_strerror(error));
     opus_encoder_destroy(encoder);
     return 1;
   }
