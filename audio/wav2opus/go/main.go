@@ -139,55 +139,7 @@ func main() {
 
 func readWavHeader(r io.Reader) (WavHeader, error) {
 	var wavHeader WavHeader
-	if err := binary.Read(r, binary.LittleEndian, &wavHeader.ChunkID); err != nil {
-		return wavHeader, err
-	}
-
-	if err := binary.Read(r, binary.LittleEndian, &wavHeader.ChunkSize); err != nil {
-		return wavHeader, err
-	}
-
-	if err := binary.Read(r, binary.LittleEndian, &wavHeader.Format); err != nil {
-		return wavHeader, err
-	}
-
-	if err := binary.Read(r, binary.LittleEndian, &wavHeader.Subchunk1ID); err != nil {
-		return wavHeader, err
-	}
-
-	if err := binary.Read(r, binary.LittleEndian, &wavHeader.Subchunk1Size); err != nil {
-		return wavHeader, err
-	}
-
-	if err := binary.Read(r, binary.LittleEndian, &wavHeader.AudioFormat); err != nil {
-		return wavHeader, err
-	}
-
-	if err := binary.Read(r, binary.LittleEndian, &wavHeader.NumChannels); err != nil {
-		return wavHeader, err
-	}
-
-	if err := binary.Read(r, binary.LittleEndian, &wavHeader.SampleRate); err != nil {
-		return wavHeader, err
-	}
-
-	if err := binary.Read(r, binary.LittleEndian, &wavHeader.ByteRate); err != nil {
-		return wavHeader, err
-	}
-
-	if err := binary.Read(r, binary.LittleEndian, &wavHeader.BlockAlign); err != nil {
-		return wavHeader, err
-	}
-
-	if err := binary.Read(r, binary.LittleEndian, &wavHeader.BitsPerSample); err != nil {
-		return wavHeader, err
-	}
-
-	if err := binary.Read(r, binary.LittleEndian, &wavHeader.Subchunk2ID); err != nil {
-		return wavHeader, err
-	}
-
-	if err := binary.Read(r, binary.LittleEndian, &wavHeader.Subchunk2Size); err != nil {
+	if err := binary.Read(r, binary.LittleEndian, &wavHeader); err != nil {
 		return wavHeader, err
 	}
 	return wavHeader, nil
