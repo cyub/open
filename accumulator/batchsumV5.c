@@ -21,9 +21,7 @@ void *add_numbers(void *arg) {
 }
 
 int main() {
-  long batch = n % chunksize == 0 ? (n / chunksize)
-                                  : ((n / chunksize) + 1);  // 分几批次计算
-
+  long batch = (n + chunksize - 1) / chunksize;  // 分几批次计算
   Info *infos = (Info *)(malloc(sizeof(Info) * batch));
   for (long i = 0; i < batch; i++) {
     infos[i].start = i * chunksize + 1;
