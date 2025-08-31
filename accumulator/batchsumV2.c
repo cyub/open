@@ -12,11 +12,13 @@ pthread_mutex_t m = PTHREAD_MUTEX_INITIALIZER;
 void *add_numbers(void *arg) {
   long i;
   long start = *(long *)arg;
-  for (i = start; i < start + chunksize && i <= n; i++) {
+  long end = start + chunksize <= n ? start + chunksize : n + 1;
+  for (i = start; i < end; i++) {
     pthread_mutex_lock(&m);
     sum += i;
     pthread_mutex_unlock(&m);
   }
+  return NULL;
 }
 
 int main() {

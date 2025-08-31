@@ -14,9 +14,12 @@ long sum;              // 计算的结果
 void *add_numbers(void *arg) {
   long i;
   long start = *(long *)arg;
-  for (i = start; i < start + chunksize && i <= n; i++) {
+  long end = start + chunksize <= n ? start + chunksize : n + 1;
+  for (i = start; i < end; i++) {
     atomic_fetch_add(&sum, i);
   }
+
+  return NULL;
 }
 
 int main() {

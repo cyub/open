@@ -15,9 +15,13 @@ typedef struct {
 void *add_numbers(void *arg) {
   long i;
   Info *info = (Info *)arg;
-  for (i = info->start; i < info->start + chunksize && i <= n; i++) {
+  long start = info->start;
+  long end = info->start + chunksize <= n ? info->start + chunksize : n + 1;
+  for (i = start; i < end; i++) {
     info->sum += i;
   }
+
+  return NULL;
 }
 
 int main() {
