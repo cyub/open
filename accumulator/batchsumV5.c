@@ -2,6 +2,7 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 long n = 1e6;          // 计算从1到n整数和
 long chunksize = 1e4;  // 分块计算，每块待计算数的个数
@@ -26,6 +27,11 @@ void *add_numbers(void *arg) {
 
 int main() {
   long batch = (n + chunksize - 1) / chunksize;  // 分几批次计算
+  long numThreads = sysconf(_SC_NPROCESSORS_ONLN);
+  if (numThreads <= 0) numThreads = 4;
+  // 限制线程数等于CPU核数，避免线程过多造成频繁上下文切换开销
+  batch = numThreads < batch ? numThreads : batch;
+
   Info *infos = (Info *)(malloc(sizeof(Info) * batch));
   for (long i = 0; i < batch; i++) {
     infos[i].start = i * chunksize + 1;
