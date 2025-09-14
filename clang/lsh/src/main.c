@@ -72,12 +72,19 @@ char **lsh_get_args(char *line) {
   char *token = strtok(line, LINE_SPILT_DELIM);
   int position = 0;
   size_t size = LINE_TOKEN_INIT_SIZE;
+  char **args_backup;
   while (token) {
     args[position] = token;
     position++;
     if (position >= size) {
-      size = size * 2;
+      size *= 2;
+      args_backup = args;
       args = realloc(args, size);
+      if (!args) {
+        free(args_backup);
+        perror("realloc args error");
+        exit(EXIT_FAILURE);
+      }
     }
     token = strtok(NULL, LINE_SPILT_DELIM);
   }
