@@ -14,19 +14,18 @@ int lsh_execute(char **);
 int lsh_builtin_cd(char **);
 int lsh_builtin_exit(char **);
 int lsh_builtin_help(char **);
-int lsh_get_builtin_num();
+int lsh_builtin_cmd_num();
 
-char *builtin_str[] = {
-    "cd",
-    "help",
-    "exit",
-};
+typedef int (*builtin_cmd_handle)(char **);
 
-int (*buildin[])(char **) = {
-    lsh_builtin_cd,
-    lsh_builtin_help,
-    lsh_builtin_exit,
-};
+typedef struct {
+  char *name;
+  builtin_cmd_handle handle;
+} builtin_cmd;
+
+builtin_cmd builtin_cmds[] = {{"cd", lsh_builtin_cd},
+                              {"help", lsh_builtin_help},
+                              {"exit", lsh_builtin_exit}};
 
 int main() {
   setbuf(stdout, NULL);
@@ -89,19 +88,18 @@ char **lsh_get_args(char *line) {
 
 int lsh_launch(char **args) {
   if (args[0] == NULL) {
-    printf("args empty");
     return 1;
   }
 
-  for (int i = 0; i < lsh_get_builtin_num(); i++) {
-    if (strcmp(args[0], builtin_str[i]) == 0) {
-      return buildin[i](args);
+  for (int i = 0; i < lsh_builtin_cmd_num(); i++) {
+    if (strcmp(args[0], builtin_cmds[i].name) == 0) {
+      return builtin_cmds[i].handle(args);
     }
   }
   return lsh_execute(args);
 }
 
-int lsh_get_builtin_num() { return sizeof(builtin_str) / sizeof(char *); }
+int lsh_builtin_cmd_num() { return sizeof(builtin_cmds) / sizeof(builtin_cmd); }
 
 int lsh_builtin_cd(char **args) {
   int rc;
@@ -114,6 +112,10 @@ int lsh_builtin_cd(char **args) {
 
 int lsh_builtin_help(char **args) {
   fprintf(stderr, "Usage: command [option]\n");
+  fprintf(stderr, "The cmd are built in:\n");
+  for (int i = 0; i < lsh_builtin_cmd_num(); i++) {
+    fprintf(stderr, "  %s\n", builtin_cmds[i].name);
+  }
   return 1;
 }
 

@@ -19,4 +19,4 @@ run:
 clean:
 	rm -rf $(BUILD_DIR)
 
-rebuild: clean build
+rebuild: clean configure build
