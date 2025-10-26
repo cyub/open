@@ -6,6 +6,8 @@
 - [硅基流动](https://www.siliconflow.cn/)
 - [deepseek](https://platform.deepseek.com/usage)
 
+## 示例列表
+
 - 最简单示例: [基于Qwen3](./example1.py) / [基于deepseek](./example2.py)
 - [最简单链](./example3.py)
 - [带提示词的脸](./example4.py)
