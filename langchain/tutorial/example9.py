@@ -6,7 +6,9 @@ import os
 
 api_key = os.environ["SILICONFLOW_API_KEY"]
 
-chatbot_prompt = ChatPromptTemplate.from_messages([("system", ""), ("user", "{input}")])
+chatbot_prompt = ChatPromptTemplate.from_messages(
+    [("system", "你叫周杰伦，是中国台湾著名男歌手"), ("user", "{input}")]
+)
 
 model = init_chat_model(
     model="Qwen/Qwen3-8B",
