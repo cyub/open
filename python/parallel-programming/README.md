@@ -181,6 +181,20 @@ def increment_without_lock():
         shared_resource_with_no_lock = v    # 写
 ```
 
+#### 关于 Python GIL
+
+1. Python 解释器的每个实例是一个进程。使用 multiprocessing 或 concurrent.futures 库可以启动额外的 Python 进程。Python 的 subprocess 库用于启动运行外部程序（不管使用何种语言编写）的进程。
+2. Python 解释器仅使用一个线程运行用户的程序和内存垃圾回收程序。使用 threading 或 concurrent.futures 库可以启动额外的 Python 线程。
+3. 对对象引用计数和解释器其他内部状态的访问受一个锁的控制，这个锁是“全局解释器锁”（Global Interpreter Lock，GIL）。任意时间点上只有一个 Python 线程可以持有 GIL。这意味着，任意时间点上只有一个线程能执行 Python 代码，与 CPU 核数量无关。
+4. 为了防止一个 Python 线程无限期持有 GIL，Python 的字节码解释器默认每 5 毫秒暂停当前 Python 线程 (这个时间间隔使用 sys.getswitchinterval() 获取，使用 sys.setswitchinterval(s) 设置)，释放 GIL。被暂停的线程可以再次尝试获得 GIL，但是如果有其他线程等待，那么操作系统调度程序可能会从中挑选一个线程开展工作。
+5. 我们编写的 Python 代码无法控制 GIL。但是，耗时的任务可由内置函数或 C 语言（以及其他能在 Python/C API 层级接合的语言）扩展释放 GIL。
+6. Python 标准库中发起系统调用(系统调用指用户的代码调用操作系统内核的函数。I/O、计时器和锁都是通过系统调用获得的内核服务)的函数均可释放 GIL。这包括所有执行磁盘 I/O、网络 I/O 的函数，以及 time.sleep()。NumPy/SciPy 库中很多 CPU 密集型函数，以及 zlib 和 bz2 模块中执行压缩和解压操作的函数，也都释放 GIL。
+7. 在 Python/C API 层级集成的扩展也可以启动不受 GIL 影响的非 Python 线程。这些不受 GIL 影响的线程无法更改 Python 对象，但是可以读取或写入内存中支持缓冲协议的底层对象，例如 bytearray、array.array 和 NumPy 数组。
+8. GIL 对使用 Python 线程进行网络编程的影响相对较小，因为 I/O 函数释放 GIL，而且与内存读写相比，网络读写的延迟始终很高。各个单独的线程无论如何都要花费大量时间等待，所以线程可以交错执行，对整体吞吐量不会产生重大影响。正如 David Beazley 所言：“Python 线程非常擅长什么都不做。
+9. 对 GIL 的争用会降低计算密集型 Python 线程的速度。对于这类任务，在单线程中依序执行的代码更简单，速度也更快。
+10. 若想在多核上运行 CPU 密集型 Python 代码，必须使用多个 Python 进程。
+
+以上关于Python GIL 的介绍来自《流畅的Python》一书。
 ### 使用可重入锁RLock实现线程同步
 
 RLock叫做“Reentrant Lock”，即可以重复进入的锁，也叫做“递归锁”。
@@ -340,6 +354,7 @@ if __name__ == "__main__":
 ```
 
 #### 虚假唤醒
+
 条件变量规范就是：“先测条件，再决定等待；被唤醒后，再测条件。” 使用while是正确的，若改成if是有问题的。
 
 ```python
@@ -372,9 +387,10 @@ while len(items) == 10:
 - 线程 C: 抢在 A 之前拿到锁，往队列放 1 条数据 → notify()
 - 线程 A：终于拿到锁了 → 把B的那条数据消费掉 → 释放锁 → 但队列里面还有一条C放入数据没有消费者去消费！
 
-对于**队列场景一律用 `notify_all()`**，生产者可能一次 `put_list(items)` 放入 N 条，若只 `notify()` 一次，  结果只有 1 个线程被唤醒，剩下 N-1 条数据无人消费，吞吐量骤降。此外多唤醒几个线程看似浪费上下文切换，但：
+对于**队列场景一律用 `notify_all()`**，生产者可能一次 `put_list(items)` 放入 N 条，若只 `notify()` 一次， 结果只有 1 个线程被唤醒，剩下 N-1 条数据无人消费，吞吐量骤降。此外多唤醒几个线程看似浪费上下文切换，但：
 - 它们终究要抢同一把锁，**只有一个能真正进入临界区**；
 - 在现代调度器里，多余唤醒的成本远低于“任务饥饿”或“轮询补偿”带来的延迟。
+
 ### 使用with管理同步对象
 
 使用 `with` 语法可以在特定的地方分配和释放资源，因此， `with` 语法也叫做“上下文管理器”。在threading模块中，所有带有 `acquire()` 方法和 `release()` 方法的对象都可以使用上下文管理器。
@@ -927,9 +943,9 @@ Asyncio提供了一下方法来管理事件循环：
 - loop.call_later(time_delay, callback, argument): 延后 time_delay 秒再执行 callback 方法。
 - loop.call_soon(callback, argument): 尽可能快调用 callback, call_soon() 函数结束，主线程回到事件循环之后就会马上调用 callback 。
 - loop.time(): 以float类型返回当前时间循环的内部时间。
--  asyncio.set_event_loop(): 为当前上下文设置事件循环。
+- asyncio.set_event_loop(): 为当前上下文设置事件循环。
 - asyncio.new_event_loop(): 根据此策略创建一个新的时间循环并返回。
--  loop.run_forever(): 在调用 stop() 之前将一直运行。
+- loop.run_forever(): 在调用 stop() 之前将一直运行。
 
 注意：asyncio.get_event_loop() 在主线程没有正在运行的事件循环时，会自动新建一个并返回；但 Python 3.10 起这种行为被标为 deprecated，会抛出：DeprecationWarning: There is no current event loop。get_event_loop() 为了兼容旧代码，会隐式地 new_event_loop() → set_event_loop()，再返回；从 3.10 开始官方不再鼓励这种“隐式创建”，所以给出警告。
 
@@ -1157,30 +1173,25 @@ if __name__ == "__main__":
 
 ```python
 import asyncio
-import time
 
-def mark_done(fut: asyncio.Future) -> None:
-    """由‘外部回调’在 2 秒后给 future 设置结果"""
-    time.sleep(2)
-    fut.set_result("Future is done!")
+async def job(n):
+    await asyncio.sleep(n)
+    return f'done {n}'
 
 async def main():
-    loop = asyncio.get_running_loop()
+    tasks = [asyncio.create_task(job(i)) for i in range(1, 4)]
+    # 使用 wait 等待全部完成
+    done, pending = await asyncio.wait(tasks)
+    for t in done:
+        print(t.result())
 
-    # 1. 创建一个裸 Future
-    fut = loop.create_future()          # 等价于 asyncio.Future(loop=loop)
-
-    # 2. 启动一个线程去“模拟外部事件”完成 Future
-    #    （真实场景里可以是网络库、文件监听等回调）
-    loop.run_in_executor(None, mark_done, fut)
-
-    # 3. 在这里挂起，直到 Future 被 set_result
-    print("awaiting future...")
-    result = await fut                  # 挂起点
-    print("got result:", result)
-
-if __name__ == "__main__":
-    asyncio.run(main())
+if __name__ == '__main__':
+    loop = asyncio.new_event_loop()   # 1. 手动新建
+    asyncio.set_event_loop(loop)      # 2. 设为当前循环
+    try:
+        loop.run_until_complete(main())  # 3. 驱动协程
+    finally:
+        loop.close()
 ```
 
 ### 使用裸 asyncio.Future
